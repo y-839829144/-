@@ -1,19 +1,16 @@
 from rest_framework import serializers, validators
-from scene.models import Unlocking
-from alarm.models import Alarm_Management
+from .models import *
 
 
-
-class IndexLockserializer(serializers.ModelSerializer):
-
+class LogSerializers(serializers.ModelSerializer):
+    user_id = serializers.HiddenField(
+        default= serializers.CurrentUserDefault
+    )
     class Meta:
-        model = Unlocking
-        fields = ('user_id','Unlocking_insert_time','Unlocking_online','scene_id')
+        model = Log
+        fields = "__all__"
 
-
-class IndexAlarmSerializer(serializers.ModelSerializer):
-
-
-    class Meta:
-        model = Alarm_Management
-        fields = ('am_device','am_contene','am_level_id','am_status')
+    extra_kwargs = {
+        'log_addtime': {'required': False, 'read_only': True},
+        'user_id': {'required': False, 'read_only': True},
+    }

@@ -1,117 +1,78 @@
 from django.shortcuts import render
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import generics, status, views
+from rest_framework import generics, status
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 from rest_framework import mixins
-from rest_framework.views import APIView
-from access.models import Door_approval
-from alarm.models import Alarm_Management
-from log.views import log_create
+from .models import Log
 from .serializers import *
-from scene.models import Scene
-from .schemas import *
+from .filters import *
+
+
 # Create your views here.
 
-class IndexNumView(APIView):
-    '''
+def log_create(log_content, log_module, user, scene_id=None):
 
-         获取首页各状态的数据
-        ---
-        #### 参数说明
-        |字段名称|描述|必须|类型|
-        |--|--|--|--|
-        |page|分页|True|int|
-        |scene  |场景在线数|False| / |
-        |door |门禁待审批数|False| / |
-        |alarm  |告警待审批数|False| / |
-        |alarm_deal |告警待处理状态数|False| / |
+    log = Log()
+    log.user_id_id = user.id
+    log.log_module = log_module
+    log.log_addtime = datetime.now()
+    log.log_content = log_content
 
+    if scene_id:
+        log.scene_id = scene_id
+    try:
 
+        log.save()
 
+    except Exception as e:
+        raise RuntimeError('日志插入错误'+str(e))
 
-
-        #### 响应字段说明
-        |字段名称|描述|必须|类型|
-        |--|--|--|--|
+    return True
 
 
-    '''
-    permission_classes = ()
+class LogListView(generics.ListAPIView):
+    """
+    日志列表查询
+    """
+    queryset = Log.objects.all()
+    serializer_class = LogSerializers
+    module_perms = ['log.log_view']
 
-    def post(self,request):
-        scene = len(Scene.objects.filter(scene_status=1))
-        door = len(Door_approval.objects.filter(door_status=1))
-        alarm = len(Alarm_Management.objects.filter(am_status=2))
-        alarm_deal = len(Alarm_Management.objects.filter(am_status=1))
-        result = {}
-        result['scene_online']=scene
-        result['door_online']=door
-        result['alarm_status1']=alarm
-        result['alarm_status2']=alarm_deal
-        user = self.request.user
-        log_create(log_content='获取首页各状态数据', log_module='首页管理', user=user)
-        return Response(result)
+    filter_backends = (DjangoFilterBackend, SearchFilter, OrderingFilter)
+    search_fields = ('user_id', 'log_content')  # 模糊查询 搜索
+    ordering_fields = ('-log_addtime')  # 默认时间降序排列
+    filter_class = LogFilter
 
-class IndexLockView(generics.ListAPIView):
-    '''
-
-         获取开锁信息记录
-        ---
-        #### 参数说明
-        |字段名称|描述|必须|类型|
-        |--|--|--|--|
-        |page|分页|True|int|
-
-
-
-
-
-        #### 响应字段说明
-        |字段名称|描述|必须|类型|
-        |--|--|--|--|
-
-
-    '''
-
-    queryset = Unlocking.objects.all()
-    serializer_class = IndexLockserializer
-    permission_classes = ()
-
-
-class IndexAlarmView(generics.ListAPIView):
-    '''
-
-         获取场景下告警设备信息
-        ---
-        #### 参数说明
-        |字段名称|描述|必须|类型|
-        |--|--|--|--|
-        |page|分页|True|int|
-        |scene_id  |选取场景ID|False| correct Type:   1 /error Type: list |
-
-
-
-
-        #### 响应字段说明
-        |字段名称|描述|必须|类型|
-        |--|--|--|--|
-
-
-    '''
-    queryset = Alarm_Management.objects.all()
-    serializer_class = IndexAlarmSerializer
-    permission_classes = ()
-
-    schema = IndexAlarmSchema
     def get_queryset(self):
-        scene_id = self.request.query_params.get('scene_id')
-        queryset = Alarm_Management.objects.filter(scene_id_id=scene_id)
-        user = self.request.user
-        log_create(log_content='获取场景下告警设备信息', log_module='首页管理', user=user)
+        log_id = self.request.query_params.get('log_id', '')
+        if log_id:
+            queryset = Log.objects.filter(pk=log_id)  # 获取具体日志的信息
+        else:
+            queryset = Log.objects.all()
         return queryset
 
 
+class LogCreateView(generics.CreateAPIView):
+    """
+    创建日志
+    """
+    serializer_class = LogSerializers
+    module_perms = ['log.log_view']
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        try:  # 失败信息的定制
+            serializer.is_valid(raise_exception=True)
+        except:
+            return Response(data={'code': 400, 'message': '添加失败'}, status=status.HTTP_400_BAD_REQUEST)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        res = Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        # 成功后返回信息的定制
+        res.data['code'] = 200
+        res.data['message'] = '添加成功'
+        return res
 
 
 
