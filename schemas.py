@@ -15,15 +15,15 @@ TokenSchema = AutoSchema([
 )
 
 
-ActiveUpdateSchema = AutoSchema([
+VideoListSchema = AutoSchema([
     # token_field,
     coreapi.Field(
-                "User_active",
-                required=True,
-                location="form",# form
-                schema=coreschema.Object(),
+                "video_id",
+                required=False,
+                location="query",# form
+                schema=coreschema.Integer(),
                 # schema=coreschema.String(),
-                description="用户冻结",
+                description="视频ID",
             ),
-
 ])
+
