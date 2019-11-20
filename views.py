@@ -1,40 +1,48 @@
-from datetime import datetime
-
 from django.shortcuts import render
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import generics, status, views
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 from rest_framework import mixins
+from collections import Counter
+from datetime import timedelta
+
+from rest_framework.views import APIView
 
 from log.views import log_create
-from .models import Door_approval
-from .serializers import AccessSerializer,AccessSerializer1
-from .filters import AccessFilter
-from .schemas import AccessUpdateSchema,CountSchema,DoorTimeSchema
+from.serializers import *
+from .models import *
+from .schemas import *
+from .filters import *
+import xlwt
+from io import BytesIO
+
 # Create your views here.
 
-class AccessListView(generics.ListAPIView):
+
+class AlarmListView(generics.ListAPIView):
+
     '''
 
-        获取门禁管理列表
+         获取告警管理列表
         ---
         #### 参数说明
         |字段名称|描述|必须|类型|
         |--|--|--|--|
         |page|分页|True|int|
-        |door_addtime|门禁增加时间|False|2019-10-25|
-        |user_id|门禁申请人|True|int|
-        |door_start|申请开始时间|True|2019-10-25|
-        |door_end|申请结束时间|True|2019-10-25|
-        |door_follow|随行人员|True|string|
-        |door_follownum|随行人数|True|int|
-        |door_detail|申请说明|True|string|
-        |door_status|申请状态|False|int|
-        |door_user|审核人|False|int|
-        |door_audittime|审核时间|False|2019-10-25|
-        |door_feedback|审批反馈|True|string|
-        |scene_id|场景ID|False|int|
+        |am_addtime|告警添加时间|False|2019-10-25|
+        |am_type_id|告警类型|True|int|
+        |am_level_id|告警级别|True|int|
+        |am_device|告警设备|False|string|
+        |am_contene|告警内容|True|string|
+        |am_status|告警状态|True|int|
+        |am_deal_user|告警处理人|True|int|
+        |am_deal_time|告警处理时间|False|2019-10-25|
+        |am_deal_detail|告警处理说明|True|string|
+        |am_audit_user|告警审核人|False|int|
+        |am_audit_time|告警审核时间|True|2019-10-25|
+        |scene_id|场景ID|True|int|
+        |am_audit_detail|告警审核说明|True|string|
 
 
 
@@ -45,30 +53,38 @@ class AccessListView(generics.ListAPIView):
 
 
     '''
-    queryset = Door_approval.objects.all()
-    serializer_class = AccessSerializer
+    queryset = Alarm_Management.objects.all()
+    serializer_class = AlarmListSerializers
+    module_perms = ['alarm.am_list']
     filter_backends = (DjangoFilterBackend,)
-    filter_class = AccessFilter
-    module_perms = ['access.door_listview']
+    filter_class = AlarmFilter
 
 
+class AlarmManyTypeView(generics.ListAPIView):
+    """
+    告警类型列表
 
-
-class AccessCreateView(generics.CreateAPIView):
+    """
+    queryset =  Alarm_Management.objects.all()
+    serializer_class = AlarmManyListSerializers
+    schema = AlarmManySchema
+    module_perms = ['alarm.am_type_list']
+    def get_queryset(self):
+        am_type_id = self.request.query_params.get('Type_id_id')
+        queryset = Alarm_Management.objects.filter(am_type_id_id=am_type_id,am_status=1)
+        user = self.request.user
+        log_create(log_content='查看告警类型列表', log_module='告警管理', user=user)
+        return queryset
+class AlarmManyListView(views.APIView):
     '''
 
-        门禁申请
+         批量处理列表
         ---
         #### 参数说明
         |字段名称|描述|必须|类型|
         |--|--|--|--|
         |page|分页|True|int|
-        |door_start|申请开始时间|True|2019-10-25|
-        |door_end|申请结束时间|True|2019-10-25|
-        |door_follow|随行人员|True|string|
-        |door_follownum|随行人数|True|int|
-        |door_detail|申请说明|True|string|
-        |scene_id|场景ID|False|int|
+        |am_id   |批量处理ID|False| correct Type:   1，2，3, /error Type: 1 |
 
 
 
@@ -79,8 +95,54 @@ class AccessCreateView(generics.CreateAPIView):
 
 
     '''
-    serializer_class = AccessSerializer
-    permission_classes = ()
+
+    module_perms = ['alarm.am_control']
+    schema = AlarmManySchema1
+    def post(self,request,*args,**kwargs):
+        am_id = self.request.query_params.get('am_id')[:-1].split(',')
+        am_deal_detail = self.request.query_params.get('am_deal_detail')
+
+        try:
+            for id in am_id:
+                data = Alarm_Management.objects.get(id=id)
+                data.am_audit_detail = am_deal_detail
+                data.am_status = 3
+                data.am_deal_user = self.request.user.id
+                data.am_addtime = datetime.now()
+                data.save()
+        except:
+            return Response(data={'code':400,'message':'修改失败'},status=status.HTTP_400_BAD_REQUEST)
+        user = self.request.user
+        log_create(log_content='告警批量处理', log_module='告警管理', user=user)
+        return Response(data={'code':200,'message':'修改成功'},status=status.HTTP_200_OK)
+
+class AlarmCreateView(generics.CreateAPIView):
+    '''
+
+         新增告警
+        ---
+        #### 参数说明
+        |字段名称|描述|必须|类型|
+        |--|--|--|--|
+        |page|分页|True|int|
+        |am_type_id|告警类型|True|int|
+        |am_level_id|告警级别|True|int|
+        |am_device|告警设备|False|string|
+        |am_contene|告警内容|True|string|
+        |scene_id|场景ID|True|int|
+
+
+
+
+        #### 响应字段说明
+        |字段名称|描述|必须|类型|
+        |--|--|--|--|
+
+
+    '''
+    queryset = Alarm_Management.objects.all()
+    serializer_class = AlarmCreateSerializers
+    module_perms = ['alarm.am_control']
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -95,23 +157,46 @@ class AccessCreateView(generics.CreateAPIView):
         res.data['code'] = 200
         res.data['message'] = '添加成功'
         user = self.request.user
-        log_create(log_content='门禁申请', log_module='门禁管理', user=user)
+        log_create(log_content='新增告警', log_module='告警管理', user=user)
         return res
 
 
+class AlarmApplicationView(views.APIView):
+    """
+    告警单条处理
+    """
+    module_perms = ['alarm.am_control']
+    schema = AlarmApplicationSchema
+    def post(self,request):
+        alarm_id  = self.request.query_params.get('alarm_id')
+        alarm_dealtail = self.request.query_params.get('alarm_dealtail')
+        try:
+            alarm = Alarm_Management.objects.get(id = alarm_id)
+            alarm.am_deal_time = datetime.now()
+            alarm.am_status = 2
+            alarm.am_deal_user =  self.request.user.id
+            alarm.am_deal_detail = alarm_dealtail
+            alarm.save()
+        except:
+            return Response(data={'code': 400, 'message': '修改失败'}, status=status.HTTP_400_BAD_REQUEST)
+        user = self.request.user
+        log_create(log_content='告警单条数据处理', log_module='告警管理', user=user)
+        return Response(data={'code': 200, 'message': '修改成功'}, status=status.HTTP_200_OK)
 
-class AccessUpdateView(views.APIView):
+class AlarmAuditView(views.APIView):
     '''
 
-        门禁审批
+         告警审批
         ---
         #### 参数说明
         |字段名称|描述|必须|类型|
         |--|--|--|--|
         |page|分页|True|int|
-        |door_status|申请状态|False|int|
-        |door_feedback|审批反馈|True|string|
-
+        |am_status|告警状态|True|int|
+        |am_audit_user|告警审核人|False|int|
+        |am_audit_time|告警审核时间|True|2019-10-25|
+        |scene_id|场景ID|True|int|
+        |am_audit_detail|告警审核说明|True|string|
 
 
 
@@ -122,36 +207,30 @@ class AccessUpdateView(views.APIView):
 
 
     '''
-    module_perms = ['access.door_updateview']
-    schema = AccessUpdateSchema
+    schema = AlarmAuditSchema
+    module_perms = ['alarm.am_control']
     def post(self,request):
         try:
-            data = self.request.data['Door_approval']
-            door_status = data['door_status']
-            door_feedback = data['door_feedback']
-            queryset = Door_approval.objects.get(id =data['id'])
-            queryset.door_status = door_status
-            queryset.door_addtime=datetime.now()
-            queryset.door_feedback=door_feedback
-            queryset.save()
+            alarm_id = self.request.query_params.get('alarm_id')
+            am_audit_detail = self.request.query_params.get('am_audit_detail')
+            alarm = Alarm_Management.objects.get(id = alarm_id)
+            alarm.am_status = 3
+            alarm.am_audit_detail = am_audit_detail
+            alarm.am_audit_time = datetime.now()
+            alarm.am_audit_user = self.request.user.id
+            alarm.save()
         except:
-
-            return Response(data={
-                'code': 400,
-                'message': '修改失败',
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return Response(data={'code': 400, 'message': '修改失败'}, status=status.HTTP_400_BAD_REQUEST)
         user = self.request.user
-        log_create(log_content='门禁审批', log_module='门禁管理', user=user)
-        return Response(data={
-            'code': 200,
-            'message': '修改成功',
-        }, status=status.HTTP_200_OK)
+        log_create(log_content='告警审批', log_module='告警管理', user=user)
+        return Response(data={'code': 200, 'message': '修改成功'}, status=status.HTTP_200_OK)
 
 
-class DoorCountView(views.APIView):
+
+class AlarmTypeCountView(views.APIView):
     '''
 
-        用户申请开门次数计算占比
+        各类型告警占比
         ---
         #### 参数说明
         |字段名称|描述|必须|类型|
@@ -170,109 +249,130 @@ class DoorCountView(views.APIView):
 
 
     '''
-    schema = CountSchema
-    module_perms = ['access.door_countview']
-
+    schema =  AlarmTypeCountSchema
+    module_perms = ['alarm.am_control']
     def post(self,request):
-        data = self.request.data['Count']
+
+        data = self.request.data['input_time']
         start_time = data['start_time']
         end_time = data['end_time']
-        queryset = Door_approval.objects.filter(door_addtime__range=(start_time,end_time))
-        user=[]
+        queryset = Alarm_Management.objects.filter(am_addtime__range=(start_time, end_time))
+        type = []
+        s = []
+        for i in queryset:
+            type.append(i.am_type_id_id)
+        num = len(type)
+        for j in type:
+            s.append(str(round(type.count(j)/num*100,2))+'%')
+        user = self.request.user
+        log_create(log_content='各类型告警占比', log_module='告警管理', user=user)
+        return Response(dict(zip(type,s)))
+
+
+class SafeCountView(views.APIView):
+    '''
+
+        安防监测各状态告警数量占比
+        ---
+        #### 参数说明
+        |字段名称|描述|必须|类型|
+        |--|--|--|--|
+        |page|分页|True|int|
+        |start_time|筛选开始时间|True|2019-10-25|
+        |end_time|筛选结束时间|True|2019-10-25|
+
+
+
+
+
+        #### 响应字段说明
+        |字段名称|描述|必须|类型|
+        |--|--|--|--|
+
+
+    '''
+    schema =  SafeCountSchema
+    module_perms = ['alarm.am_control']
+    def post(self,request):
+        safe_id = self.request.query_params.get('type_id')
+        data = self.request.data['input_time']
+        start_time = data['start_time']
+        end_time = data['end_time']
+        anfa = []
         s=[]
+        queryset = Alarm_Management.objects.filter(am_addtime__range=(start_time, end_time),am_type_id=safe_id)
         for i in queryset:
-            user.append(i.user_id_id)
-        num = len(user)
-        set_user = set(user)
-        for j in set_user:
-            s.append(str(round(user.count(j)/num*100,2))+'%')
+            anfa.append(i.am_status)
+        num = len(anfa)
+        for j in anfa:
+            s.append(str(round(anfa.count(j)/num*100,2))+'%')
         user = self.request.user
-        log_create(log_content='计算用户开门次数占比', log_module='门禁管理', user=user)
-        return Response(dict(zip(set_user,s)))
+        log_create(log_content='安防监测各状态告警数量占比', log_module='告警管理', user=user)
+        return Response(dict(zip(anfa,s)))
 
 
-class DoorTimeView(views.APIView):
-    '''
+        
+class DealCountView(views.APIView):
 
-        用户开门总时间占比
-        ---
-        #### 参数说明
-        |字段名称|描述|必须|类型|
-        |--|--|--|--|
-        |page|分页|True|int|
-        |start_time|筛选开始时间|True|2019-10-25|
-        |end_time|筛选结束时间|True|2019-10-25|
-
-
-
-
-
-        #### 响应字段说明
-        |字段名称|描述|必须|类型|
-        |--|--|--|--|
-
-
-    '''
-    schema = DoorTimeSchema
-    module_perms = ['access.door_timeview']
+    module_perms = ['alarm.am_control']
     def post(self,request):
-        data = self.request.data['Time']
+        data = Alarm_Management.objects.all()
+        queryset = Alarm_Management.objects.filter(am_status=1)
+        qcount = []
+        for i in queryset:
+            qcount.append(i)
+        dealcount = len(qcount)
+        allcount =  len(data)
+        s = dealcount/allcount
+        return Response(s,)
+
+class NotDealTimeView(APIView):
+    """
+     未处理告警时间和
+     ---
+     #### 参数说明
+     | 字段名称 | 描述 | 必须 | 类型 |
+     | -- | -- | -- | -- |
+     | alarm_time | 筛选时间段 | True | dict |
+
+
+     #### 响应字段说明
+     | 字段名称 | 描述 | 必须 | 类型 |
+     | -- | -- | -- | -- |
+     | code | 200 | -- | int |
+     | sum_time | 未处理告警时间和 | -- | dict |
+
+     #### 响应消息：
+     | Http响应码 | 原因 | 响应模型 |
+     | -- | -- | -- |
+     | 200 | 请求成功 | 返回时间和 |
+     """
+    schema = AlarmTypePrecentSchema
+    module_perms = ['alarm.am_list']
+
+
+    def post(self, request):
+        data = self.request.data['alarm_time']
         start_time = data['start_time']
         end_time = data['end_time']
-        queryset = Door_approval.objects.filter(door_addtime__range=(start_time,end_time))
-        user=[]
-        users_id = []
-        onetime=[]
-        for i in queryset:
-            user.append(i)
-            users_id.append(i.user_id_id)
-        user_id = set(users_id)
-        k=[]
-        for i in user_id:
-            res=Door_approval.objects.filter(user_id_id=i)
-            print(res)
-            m=[]
-            for j in res:
-                m.append((j.door_end-j.door_start).seconds)
-            print(m)
-            n=sum(m)
-            print(n)
-            k.append(n)
-            onetime.append(n)
-        alltime = sum(onetime)
-        bili = []
-        for x in onetime:
-            bili.append(str(round((x/alltime)*100,2))+'%')
+        if not start_time:
+            start_time = '1970-01-01 00:00:00'
+        if not end_time:
+            end_time = datetime.now()
+        queryset = Alarm_Management.objects.filter(am_addtime__range=(start_time, end_time), am_status=1)
         user = self.request.user
-        log_create(log_content='计算用户开门总时间占比', log_module='门禁管理', user=user)
-        return Response(dict(zip(user_id,bili)))
+        log_create(log_content='计算未处理告警时间和', log_module='告警管理', user=user)
+        return Response(data={'code': 200, 'sum_time': calculate_time(queryset)}, status=status.HTTP_200_OK)
 
-
-
-
-
-
-        # onetime = []
-        # print(users_id)
-        # for j in user:
-        #     onetime.append((j.door_end-j.door_start).seconds)
-        # sumtime = sum(onetime)
-        # bili = []
-        # for x in onetime:
-        #     bili.append(str(round((x/sumtime)*100,2))+'%')
-        # print(onetime)
-        #
-        # return Response(dict(zip(user_id,bili)))
-
-
-
-
-
-
-
-
-
-
+def calculate_time(queryset):
+    alarm_time = []
+    for time in queryset:
+        alarm_time.append(time.am_addtime)
+    result = {}
+    print(Counter(alarm_time))
+    for key, value in Counter(alarm_time).items():
+        result[key.strftime('%Y-%m-%d %H:%M:%S')] = round(((datetime.now() - key).total_seconds() * value) / 60, 0)
+    return result
 
 
 
