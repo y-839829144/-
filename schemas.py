@@ -14,17 +14,52 @@ TokenSchema = AutoSchema([
         ]
 )
 
-IndexAlarmSchema = AutoSchema([
+
+
+RoleCreateSchema = AutoSchema([
     # token_field,
     coreapi.Field(
-                "scene_id",
+                "role",
                 required=True,
-                location="query",# form
-                schema=coreschema.Integer(),
+                location="form",  # from,query,url
+                schema=coreschema.Object(),
                 # schema=coreschema.String(),
-                description="场景id",
+                description="角色",
             ),
+])
 
+PermissionUpdateSchema = AutoSchema([
+    # token_field,
+    coreapi.Field(
+                "permission",
+                required=True,
+                location="form",  # from,query,url
+                schema=coreschema.Object(),
+                # schema=coreschema.String(),
+                description="权限",
+            ),
+])
 
+UserUpdateSchema = AutoSchema([
+    # token_field,
+    coreapi.Field(
+                "user",
+                required=True,
+                location="form",  # from,query,url
+                schema=coreschema.Object(),
+                # schema=coreschema.String(),
+                description="用户",
+            ),
+])
 
+RoleDeleteSchema = AutoSchema([
+    # token_field,
+    coreapi.Field(
+                "role_id",
+                required=True,
+                location="query",  # from,query,url
+                schema=coreschema.Integer,
+                # schema=coreschema.String(),
+                description="角色id",
+            ),
 ])
